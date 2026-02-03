@@ -1,0 +1,18 @@
+[Unit]
+Description=Heritage Assets Weekly Scrape
+After=network.target
+
+[Service]
+Type=oneshot
+User=mark
+Group=mark
+WorkingDirectory=/home/mark/code_26/heritage_assets
+Environment=HERITAGE_DATABASE_URL=sqlite:////home/mark/code_26/heritage_assets/heritage_assets.db
+
+ExecStart=/home/mark/code_26/heritage_assets/.venv/bin/python -c "from app.scraper import run_scrape_and_update; run_scrape_and_update()"
+
+# Allow plenty of time for full scrape
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target

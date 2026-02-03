@@ -1,0 +1,13 @@
+[Unit]
+Description=Weekly Heritage Assets Scrape Timer
+
+[Timer]
+# Run every Sunday at 3:00 AM
+OnCalendar=Sun *-*-* 03:00:00
+# Randomize start time by up to 1 hour to avoid thundering herd
+RandomizedDelaySec=3600
+# Persist timer across reboots
+Persistent=true
+
+[Install]
+WantedBy=timers.target

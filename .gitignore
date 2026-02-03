@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# Project
+*.db
+.env
+logs/
+data/
+
+# Local tools
+.claude/
+.obsidian/
+
+# Screenshots
+Pasted image*.png
+
+# OS
+.DS_Store

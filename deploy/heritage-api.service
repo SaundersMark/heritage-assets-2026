@@ -1,0 +1,21 @@
+[Unit]
+Description=Heritage Assets REST API
+After=network.target
+
+[Service]
+Type=simple
+User=mark
+Group=mark
+WorkingDirectory=/home/mark/code_26/heritage_assets
+Environment=HERITAGE_DATABASE_URL=sqlite:////home/mark/code_26/heritage_assets/heritage_assets.db
+Environment=HERITAGE_API_HOST=127.0.0.1
+Environment=HERITAGE_API_PORT=8000
+Environment=HERITAGE_API_KEY=changeme
+
+ExecStart=/home/mark/code_26/heritage_assets/.venv/bin/python -m uvicorn app.api:app --host 127.0.0.1 --port 8000
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heritage Assets - Data Explorer</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            margin: 0;
+            padding: 20px 40px;
+            background: #f5f5f5;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 { margin: 0 0 8px 0; color: #333; }
+        .subtitle { color: #666; margin-bottom: 24px; font-size: 14px; }
+        .search-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .data-source {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            align-items: center;
+        }
+        .data-source label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 2px solid #ddd;
+            transition: all 0.15s;
+        }
+        .data-source label:hover { border-color: #999; }
+        .data-source input[type="radio"] { margin: 0; }
+        .data-source input[type="radio"]:checked + span { font-weight: 600; }
+        .data-source label:has(input:checked) { border-color: #0066cc; background: #f0f7ff; }
+        .source-info { font-size: 12px; color: #666; margin-left: auto; }
+        .search-box { display: flex; gap: 10px; }
+        #search {
+            flex: 1;
+            padding: 12px 16px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            outline: none;
+        }
+        #search:focus { border-color: #0066cc; }
+        #searchBtn {
+            padding: 12px 24px;
+            font-size: 16px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        #searchBtn:hover { background: #0052a3; }
+        #searchBtn:disabled { background: #ccc; cursor: not-allowed; }
+        .hint { font-size: 12px; color: #888; margin-top: 8px; }
+        .stats { color: #666; margin-bottom: 10px; font-size: 14px; }
+        .results {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .asset-row {
+            padding: 16px 20px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .asset-row:last-child { border-bottom: none; }
+        .asset-row:hover { background: #f8f8f8; }
+        .asset-row.expanded { background: #f0f7ff; }
+        .asset-header { display: flex; gap: 12px; align-items: flex-start; }
+        .asset-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+            background: #eee;
+            padding: 2px 6px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+        .asset-description { flex: 1; color: #333; line-height: 1.4; }
+        .asset-meta { display: flex; gap: 8px; font-size: 12px; color: #666; flex-shrink: 0; }
+        .asset-location, .asset-category { background: #f0f0f0; padding: 2px 8px; border-radius: 4px; }
+        .asset-details {
+            display: none;
+            margin-top: 16px;
+            font-size: 13px;
+        }
+        .asset-row.expanded .asset-details { display: block; }
+
+        .details-meta {
+            background: #e8f4e8;
+            border: 1px solid #c3e6c3;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
+            font-size: 12px;
+        }
+        .details-meta strong { color: #333; }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: 160px 1fr;
+            gap: 4px 16px;
+            background: #fafafa;
+            padding: 16px;
+            border-radius: 6px;
+        }
+        .details-grid > div {
+            padding: 4px 0;
+        }
+        .detail-label {
+            color: #666;
+            font-weight: 500;
+            white-space: nowrap;
+            font-size: 12px;
+            line-height: 20px;
+        }
+        .detail-value {
+            color: #333;
+            word-break: break-word;
+            font-family: monospace;
+            font-size: 12px;
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            line-height: 20px;
+            min-height: 20px;
+        }
+        .detail-value.empty { color: #999; font-style: italic; }
+        .detail-value a { color: #0066cc; }
+        .loading-details { color: #666; font-style: italic; padding: 20px; }
+
+        .history-section {
+            margin-top: 16px;
+            border-top: 1px solid #ddd;
+            padding-top: 16px;
+        }
+        .history-section h4 {
+            margin: 0 0 12px 0;
+            color: #333;
+            font-size: 14px;
+        }
+        .history-toggle {
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        .history-toggle:hover { background: #e8e8e8; }
+
+        .snapshot-item {
+            background: #f8f8f8;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+        .snapshot-header {
+            background: #eee;
+            padding: 8px 12px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .snapshot-header:hover { background: #e0e0e0; }
+        .snapshot-content {
+            display: none;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 11px;
+            white-space: pre-wrap;
+            background: #fff;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .snapshot-item.expanded .snapshot-content { display: block; }
+
+        .change-item {
+            padding: 8px 12px;
+            border-left: 3px solid #ddd;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        .change-item.added { border-color: #4caf50; background: #f1f8f1; }
+        .change-item.updated { border-color: #2196f3; background: #f1f6f9; }
+        .change-item.removed { border-color: #f44336; background: #fdf1f1; }
+        .change-date { font-weight: 600; }
+        .change-fields { color: #666; font-style: italic; }
+
+        .pagination { display: flex; gap: 8px; justify-content: center; margin-top: 20px; }
+        .pagination button {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pagination button:not(:disabled):hover { background: #f0f0f0; }
+        .page-info { padding: 8px 16px; color: #666; }
+        .loading { text-align: center; padding: 40px; color: #666; }
+        .empty { text-align: center; padding: 40px; color: #999; }
+        .initial-state { text-align: center; padding: 60px 40px; color: #666; }
+        .initial-state h2 { color: #333; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <h1>Heritage Assets Data Explorer</h1>
+    <p class="subtitle">Explore UK conditionally exempt heritage assets for data quality review</p>
+
+    <div class="search-container">
+        <div class="data-source">
+            <span class="source-info" id="sourceInfo">Loading...</span>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="search" placeholder="Search by description..." autofocus>
+            <button id="searchBtn">Search</button>
+        </div>
+        <div class="hint">Press Enter or click Search. Results show summary; click a row to fetch full details.</div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="results" id="results">
+        <div class="initial-state">
+            <h2>Enter a search term above</h2>
+            <p>Search by description to explore asset data. Click any result to see all fields.</p>
+        </div>
+    </div>
+
+    <div class="pagination" id="pagination"></div>
+
+    <script>
+        let currentPage = 1;
+        let totalPages = 1;
+        let detailsCache = {};
+
+        const searchInput = document.getElementById('search');
+        const searchBtn = document.getElementById('searchBtn');
+        const resultsDiv = document.getElementById('results');
+        const statsDiv = document.getElementById('stats');
+        const paginationDiv = document.getElementById('pagination');
+        const sourceInfoSpan = document.getElementById('sourceInfo');
+
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') { currentPage = 1; loadAssets(); }
+        });
+        searchBtn.addEventListener('click', () => { currentPage = 1; loadAssets(); });
+
+        async function loadAssets() {
+            const search = searchInput.value.trim();
+            if (!search) {
+                resultsDiv.innerHTML = `
+                    <div class="initial-state">
+                        <h2>Enter a search term above</h2>
+                        <p>Search by description to explore asset data. Click any result to see all fields.</p>
+                    </div>
+                `;
+                statsDiv.textContent = '';
+                paginationDiv.innerHTML = '';
+                return;
+            }
+
+            const params = new URLSearchParams();
+            params.set('search', search);
+            params.set('page', currentPage);
+            params.set('page_size', 50);
+
+            resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
+            searchBtn.disabled = true;
+
+            try {
+                const response = await fetch('/assets?' + params.toString());
+                const data = await response.json();
+
+                totalPages = data.pages;
+                statsDiv.textContent = `Found ${data.total.toLocaleString()} matching assets`;
+
+                if (data.items.length === 0) {
+                    resultsDiv.innerHTML = '<div class="empty">No assets found matching your search</div>';
+                } else {
+                    resultsDiv.innerHTML = data.items.map(asset => renderAsset(asset)).join('');
+                    document.querySelectorAll('.asset-row').forEach(row => {
+                        row.addEventListener('click', async (e) => {
+                            // Don't toggle if clicking on history elements
+                            if (e.target.closest('.history-section') || e.target.closest('.snapshot-item')) return;
+                            // Don't toggle if user is selecting text
+                            if (window.getSelection().toString()) return;
+
+                            const wasExpanded = row.classList.contains('expanded');
+                            document.querySelectorAll('.asset-row.expanded').forEach(r => r.classList.remove('expanded'));
+                            if (!wasExpanded) {
+                                row.classList.add('expanded');
+                                const uid = row.dataset.id;
+                                await loadDetails(uid, row);
+                            }
+                        });
+                    });
+                }
+                renderPagination();
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="empty">Error: ${error.message}</div>`;
+            } finally {
+                searchBtn.disabled = false;
+            }
+        }
+
+        async function loadDetails(uniqueId, rowElement) {
+            const detailsDiv = rowElement.querySelector('.asset-details');
+            const cacheKey = uniqueId;
+
+            if (detailsCache[cacheKey]) {
+                detailsDiv.innerHTML = renderFullDetails(detailsCache[cacheKey], uniqueId);
+                attachHistoryHandlers(detailsDiv, uniqueId);
+                return;
+            }
+
+            detailsDiv.innerHTML = '<div class="loading-details">Loading details...</div>';
+
+            try {
+                // Fetch asset details and history summary in parallel
+                const [assetRes, historyRes] = await Promise.all([
+                    fetch(`/assets/${uniqueId}`),
+                    fetch(`/assets/${uniqueId}/history-summary`)
+                ]);
+                if (!assetRes.ok) throw new Error('Failed to fetch');
+                let details = await assetRes.json();
+
+                // Add history fields if available
+                if (historyRes.ok) {
+                    const history = await historyRes.json();
+                    if (history.first_seen) {
+                        details._first_seen = history.first_seen;
+                        details._last_updated = history.last_updated;
+                        details._change_count = history.change_count;
+                        // Format changes as readable string
+                        if (history.changes && history.changes.length > 0) {
+                            const recentChanges = history.changes.slice(-5); // Last 5 changes
+                            details._changes = recentChanges.map(c => {
+                                const fields = c.fields.length > 0 ? ` (${c.fields.join(', ')})` : '';
+                                return `${c.date}: ${c.type}${fields}`;
+                            }).join('\n');
+                            if (history.changes.length > 5) {
+                                details._changes = `(showing last 5 of ${history.changes.length})\n` + details._changes;
+                            }
+                        }
+                    }
+                }
+
+                detailsCache[cacheKey] = details;
+                detailsDiv.innerHTML = renderFullDetails(details, uniqueId);
+                attachHistoryHandlers(detailsDiv, uniqueId);
+            } catch (error) {
+                detailsDiv.innerHTML = `<div class="loading-details">Error loading details: ${error.message}</div>`;
+            }
+        }
+
+        function renderAsset(asset) {
+            const desc = asset.description || 'No description';
+            const truncatedDesc = desc.length > 200 ? desc.substring(0, 200) + '...' : desc;
+
+            return `
+                <div class="asset-row" data-id="${asset.unique_id}">
+                    <div class="asset-header">
+                        <span class="asset-id">${asset.unique_id}</span>
+                        <span class="asset-description">${escapeHtml(truncatedDesc)}</span>
+                        <div class="asset-meta">
+                            <span class="asset-location">${escapeHtml(asset.location || 'Unknown')}</span>
+                            <span class="asset-category">${escapeHtml(asset.category || 'Unknown')}</span>
+                        </div>
+                    </div>
+                    <div class="asset-details">
+                        <div class="loading-details">Click to load details...</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderFullDetails(data, uniqueId) {
+            // Metadata section
+            let metaHtml = `<div class="details-meta">`;
+            metaHtml += `<strong>Valid From:</strong> ${data.valid_from || 'unknown'}`;
+            if (data.valid_until) {
+                metaHtml += ` <strong>Until:</strong> ${data.valid_until}`;
+            }
+            metaHtml += '</div>';
+
+            // Filter out internal fields from the grid
+            const skipFields = ['valid_from', 'valid_until', 'id'];
+            const entries = Object.entries(data)
+                .filter(([key]) => !skipFields.includes(key))
+                .sort((a, b) => a[0].localeCompare(b[0]));
+
+            let gridHtml = '<div class="details-grid">';
+            for (const [key, value] of entries) {
+                const displayValue = formatValue(value, key);
+                const isEmpty = value === null || value === undefined || value === '';
+                gridHtml += `<div class="detail-label">${escapeHtml(key)}</div><div class="detail-value${isEmpty ? ' empty' : ''}">${displayValue}</div>`;
+            }
+            gridHtml += '</div>';
+
+            // History section
+            let historyHtml = `
+                <div class="history-section">
+                    <button class="history-toggle" data-uid="${uniqueId}">Show History (Raw Snapshots & Changes)</button>
+                    <div class="history-content" style="display:none;"></div>
+                </div>
+            `;
+
+            return metaHtml + gridHtml + historyHtml;
+        }
+
+        function attachHistoryHandlers(container, uniqueId) {
+            const toggle = container.querySelector('.history-toggle');
+            if (!toggle) return;
+
+            toggle.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const content = container.querySelector('.history-content');
+                if (content.style.display === 'none') {
+                    content.innerHTML = '<div class="loading-details">Loading history...</div>';
+                    content.style.display = 'block';
+                    toggle.textContent = 'Hide History';
+                    await loadHistory(uniqueId, content);
+                } else {
+                    content.style.display = 'none';
+                    toggle.textContent = 'Show History (Raw Snapshots & Changes)';
+                }
+            });
+        }
+
+        async function loadHistory(uniqueId, container) {
+            try {
+                const [rawRes, changesRes] = await Promise.all([
+                    fetch(`/assets/${uniqueId}/raw-history`),
+                    fetch(`/assets/${uniqueId}/changes`)
+                ]);
+
+                const rawHistory = rawRes.ok ? await rawRes.json() : [];
+                const changes = changesRes.ok ? await changesRes.json() : [];
+
+                let html = '';
+
+                // Changes section
+                if (changes.length > 0) {
+                    html += '<h4>Change Events</h4>';
+                    for (const c of changes) {
+                        html += `
+                            <div class="change-item ${c.change_type}">
+                                <span class="change-date">${c.change_date}</span>:
+                                <strong>${c.change_type}</strong>
+                                ${c.changed_fields.length > 0 ? `<span class="change-fields"> - Changed: ${c.changed_fields.join(', ')}</span>` : ''}
+                            </div>
+                        `;
+                    }
+                }
+
+                // Raw snapshots section
+                if (rawHistory.length > 0) {
+                    html += '<h4>Raw Snapshots (exactly what HMRC returned)</h4>';
+                    for (const snap of rawHistory) {
+                        html += `
+                            <div class="snapshot-item">
+                                <div class="snapshot-header" onclick="this.parentElement.classList.toggle('expanded')">
+                                    ${snap.snapshot_date} (click to expand)
+                                </div>
+                                <div class="snapshot-content">${escapeHtml(JSON.stringify(snap.raw_data, null, 2))}</div>
+                            </div>
+                        `;
+                    }
+                }
+
+                if (!html) {
+                    html = '<p>No history available for this asset.</p>';
+                }
+
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = `<p>Error loading history: ${error.message}</p>`;
+            }
+        }
+
+        function formatValue(value, key) {
+            if (value === null || value === undefined) return '(null)';
+            if (value === '') return '(empty string)';
+            if (typeof value === 'object') return escapeHtml(JSON.stringify(value));
+
+            const str = String(value);
+            // Handle multiline values (like _changes)
+            if (str.includes('\n')) {
+                return '<pre style="margin:0; font-family:inherit; white-space:pre-wrap;">' + escapeHtml(str) + '</pre>';
+            }
+            if (str.startsWith('http://') || str.startsWith('https://')) {
+                return `<a href="${escapeHtml(str)}" target="_blank">${escapeHtml(str)}</a>`;
+            }
+            if (str.includes('@') && str.includes('.') && !str.includes(' ')) {
+                return `<a href="mailto:${escapeHtml(str)}">${escapeHtml(str)}</a>`;
+            }
+            return escapeHtml(str);
+        }
+
+        function renderPagination() {
+            if (totalPages <= 1) { paginationDiv.innerHTML = ''; return; }
+            paginationDiv.innerHTML = `
+                <button onclick="goToPage(1)" ${currentPage === 1 ? 'disabled' : ''}>First</button>
+                <button onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>Prev</button>
+                <span class="page-info">Page ${currentPage} of ${totalPages}</span>
+                <button onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+                <button onclick="goToPage(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''}>Last</button>
+            `;
+        }
+
+        function goToPage(page) { currentPage = page; loadAssets(); window.scrollTo(0, 0); }
+
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        async function updateSourceInfo() {
+            try {
+                const response = await fetch('/stats');
+                const stats = await response.json();
+                sourceInfoSpan.textContent = `${stats.total_assets_current.toLocaleString()} assets (${stats.oldest_snapshot} to ${stats.newest_snapshot})`;
+            } catch (error) {
+                sourceInfoSpan.textContent = 'Error loading stats';
+            }
+        }
+
+        updateSourceInfo();
+    </script>
+</body>
+</html>
