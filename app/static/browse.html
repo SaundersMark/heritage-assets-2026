@@ -369,9 +369,14 @@
         async function loadLandBuildingsCache() {
             if (landBuildingsCache) return landBuildingsCache;
             try {
-                const response = await fetch('/land-buildings?page_size=1000');
-                const data = await response.json();
-                landBuildingsCache = data.items;
+                // Fetch all items (max 500 per page, so need 2 pages for 553 items)
+                const [res1, res2] = await Promise.all([
+                    fetch('/land-buildings?page_size=500&page=1'),
+                    fetch('/land-buildings?page_size=500&page=2')
+                ]);
+                const data1 = await res1.json();
+                const data2 = await res2.json();
+                landBuildingsCache = [...(data1.items || []), ...(data2.items || [])];
                 return landBuildingsCache;
             } catch (e) {
                 console.error('Failed to load land buildings cache:', e);
