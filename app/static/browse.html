@@ -237,6 +237,14 @@
 
     <div class="search-container">
         <div class="data-source">
+            <label>
+                <input type="radio" name="dataSource" value="assets" checked>
+                <span>Works of Art</span>
+            </label>
+            <label>
+                <input type="radio" name="dataSource" value="land_buildings">
+                <span>Land & Buildings</span>
+            </label>
             <span class="source-info" id="sourceInfo">Loading...</span>
         </div>
 
@@ -276,6 +284,10 @@
         const paginationDiv = document.getElementById('pagination');
         const sourceInfoSpan = document.getElementById('sourceInfo');
 
+        function getDataSource() {
+            return document.querySelector('input[name="dataSource"]:checked').value;
+        }
+
         const placeholders = {
             description: 'Search by description...',
             unique_id: 'Enter unique ID (e.g., 115177)',
@@ -287,6 +299,26 @@
             searchInput.focus();
         });
 
+        // Handle data source change
+        document.querySelectorAll('input[name="dataSource"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                // Update search type options
+                const isLandBuildings = getDataSource() === 'land_buildings';
+                const ownerOption = searchType.querySelector('option[value="owner_id"]');
+                if (isLandBuildings) {
+                    ownerOption.style.display = 'none';
+                    if (searchType.value === 'owner_id') searchType.value = 'description';
+                } else {
+                    ownerOption.style.display = '';
+                }
+                // Clear results when switching
+                currentPage = 1;
+                detailsCache = {};
+                updateSourceInfo();
+                if (searchInput.value.trim()) loadAssets();
+            });
+        });
+
         searchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') { currentPage = 1; loadAssets(); }
         });
@@ -294,11 +326,14 @@
 
         async function loadAssets() {
             const search = searchInput.value.trim();
+            const dataSource = getDataSource();
+            const isLandBuildings = dataSource === 'land_buildings';
+
             if (!search) {
                 resultsDiv.innerHTML = `
                     <div class="initial-state">
                         <h2>Enter a search term above</h2>
-                        <p>Search by description to explore asset data. Click any result to see all fields.</p>
+                        <p>Search by description to explore ${isLandBuildings ? 'land, buildings and collections' : 'asset'} data. Click any result to see all fields.</p>
                     </div>
                 `;
                 statsDiv.textContent = '';
@@ -310,7 +345,7 @@
             const type = searchType.value;
             if (type === 'unique_id') {
                 params.set('unique_id', search);
-            } else if (type === 'owner_id') {
+            } else if (type === 'owner_id' && !isLandBuildings) {
                 params.set('owner_id', search);
             } else {
                 params.set('search', search);
@@ -321,17 +356,20 @@
             resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
             searchBtn.disabled = true;
 
+            const endpoint = isLandBuildings ? '/land-buildings' : '/assets';
+
             try {
-                const response = await fetch('/assets?' + params.toString());
+                const response = await fetch(endpoint + '?' + params.toString());
                 const data = await response.json();
 
                 totalPages = data.pages;
-                statsDiv.textContent = `Found ${data.total.toLocaleString()} matching assets`;
+                const itemType = isLandBuildings ? 'items' : 'assets';
+                statsDiv.textContent = `Found ${data.total.toLocaleString()} matching ${itemType}`;
 
                 if (data.items.length === 0) {
-                    resultsDiv.innerHTML = '<div class="empty">No assets found matching your search</div>';
+                    resultsDiv.innerHTML = '<div class="empty">No items found matching your search</div>';
                 } else {
-                    resultsDiv.innerHTML = data.items.map(asset => renderAsset(asset)).join('');
+                    resultsDiv.innerHTML = data.items.map(item => isLandBuildings ? renderLandBuilding(item) : renderAsset(item)).join('');
                     document.querySelectorAll('.asset-row').forEach(row => {
                         row.addEventListener('click', async (e) => {
                             // Don't toggle if clicking on history elements
@@ -344,7 +382,11 @@
                             if (!wasExpanded) {
                                 row.classList.add('expanded');
                                 const uid = row.dataset.id;
-                                await loadDetails(uid, row);
+                                if (isLandBuildings) {
+                                    await loadLandBuildingDetails(uid, row);
+                                } else {
+                                    await loadDetails(uid, row);
+                                }
                             }
                         });
                     });
@@ -443,6 +485,85 @@
             `;
         }
 
+        function renderLandBuilding(item) {
+            const name = item.name || 'No name';
+            const truncatedName = name.length > 200 ? name.substring(0, 200) + '...' : name;
+            const typeLabel = item.item_type === 'collection' ? 'Collection' : 'Land/Building';
+
+            return `
+                <div class="asset-row" data-id="${item.unique_id}">
+                    <div class="asset-header">
+                        <span class="asset-id">${item.unique_id}</span>
+                        <span class="asset-description">${escapeHtml(truncatedName)}</span>
+                        <div class="asset-meta">
+                            <span class="asset-location">${escapeHtml(item.country || 'Unknown')}</span>
+                            <span class="asset-category">${escapeHtml(typeLabel)}</span>
+                        </div>
+                    </div>
+                    <div class="asset-details">
+                        <div class="loading-details">Click to load details...</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function loadLandBuildingDetails(uniqueId, rowElement) {
+            const detailsDiv = rowElement.querySelector('.asset-details');
+            const cacheKey = 'lb_' + uniqueId;
+
+            if (detailsCache[cacheKey]) {
+                detailsDiv.innerHTML = renderLandBuildingDetails(detailsCache[cacheKey], uniqueId);
+                return;
+            }
+
+            detailsDiv.innerHTML = '<div class="loading-details">Loading details...</div>';
+
+            try {
+                const response = await fetch(`/land-buildings/${uniqueId}`);
+                if (!response.ok) throw new Error('Failed to fetch');
+                const details = await response.json();
+
+                detailsCache[cacheKey] = details;
+                detailsDiv.innerHTML = renderLandBuildingDetails(details, uniqueId);
+            } catch (error) {
+                detailsDiv.innerHTML = `<div class="loading-details">Error loading details: ${error.message}</div>`;
+            }
+        }
+
+        function renderLandBuildingDetails(data, uniqueId) {
+            // HMRC link
+            const hmrcUrl = `http://www.visitukheritage.gov.uk/servlet/com.eds.ir.cto.servlet.CtoLandDetailServlet?ID=${uniqueId}`;
+            let metaHtml = `<div class="details-meta">`;
+            metaHtml += `<strong>Type:</strong> ${data.item_type === 'collection' ? 'Collection' : 'Land & Building'}`;
+            metaHtml += ` | <a href="${hmrcUrl}" target="_blank">View on HMRC</a>`;
+            if (data.undertakings) {
+                const undertakingsUrl = `http://www.visitukheritage.gov.uk/servlet/com.eds.ir.cto.servlet.CtoLandPrinUnderServlet?ID=${uniqueId}`;
+                metaHtml += ` | <a href="${undertakingsUrl}" target="_blank">View Undertakings on HMRC</a>`;
+            }
+            metaHtml += '</div>';
+
+            // Filter out internal fields
+            const skipFields = ['scraped_at', 'id'];
+            const entries = Object.entries(data)
+                .filter(([key]) => !skipFields.includes(key))
+                .sort((a, b) => {
+                    // Put undertakings last
+                    if (a[0] === 'undertakings') return 1;
+                    if (b[0] === 'undertakings') return -1;
+                    return a[0].localeCompare(b[0]);
+                });
+
+            let gridHtml = '<div class="details-grid">';
+            for (const [key, value] of entries) {
+                const displayValue = formatValue(value, key);
+                const isEmpty = value === null || value === undefined || value === '';
+                gridHtml += `<div class="detail-label">${escapeHtml(key)}</div><div class="detail-value${isEmpty ? ' empty' : ''}">${displayValue}</div>`;
+            }
+            gridHtml += '</div>';
+
+            return metaHtml + gridHtml;
+        }
+
         function renderFullDetails(data, uniqueId) {
             // Collection name banner (if available)
             let collectionHtml = '';
@@ -451,11 +572,13 @@
             }
 
             // Metadata section
+            const hmrcUrl = `http://www.visitukheritage.gov.uk/servlet/com.eds.ir.cto.servlet.CtoDetailServlet?ID=${uniqueId}`;
             let metaHtml = `<div class="details-meta">`;
             metaHtml += `<strong>Valid From:</strong> ${data.valid_from || 'unknown'}`;
             if (data.valid_until) {
                 metaHtml += ` <strong>Until:</strong> ${data.valid_until}`;
             }
+            metaHtml += ` | <a href="${hmrcUrl}" target="_blank">View on HMRC</a>`;
             metaHtml += '</div>';
 
             // Filter out internal fields from the grid
@@ -593,10 +716,19 @@
         }
 
         async function updateSourceInfo() {
+            const dataSource = getDataSource();
+            const isLandBuildings = dataSource === 'land_buildings';
+
             try {
-                const response = await fetch('/stats');
-                const stats = await response.json();
-                sourceInfoSpan.textContent = `${stats.total_assets_current.toLocaleString()} assets (${stats.oldest_snapshot} to ${stats.newest_snapshot})`;
+                if (isLandBuildings) {
+                    const response = await fetch('/land-buildings-stats');
+                    const stats = await response.json();
+                    sourceInfoSpan.textContent = `${stats.total.toLocaleString()} items (${stats.land_buildings} land/buildings, ${stats.collections} collections)`;
+                } else {
+                    const response = await fetch('/stats');
+                    const stats = await response.json();
+                    sourceInfoSpan.textContent = `${stats.total_assets_current.toLocaleString()} assets (${stats.oldest_snapshot} to ${stats.newest_snapshot})`;
+                }
             } catch (error) {
                 sourceInfoSpan.textContent = 'Error loading stats';
             }

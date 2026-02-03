@@ -13,7 +13,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Asset, ChangeEvent, RawSnapshot, SnapshotMetadata
+from app.models import Asset, ChangeEvent, LandBuilding, RawSnapshot, SnapshotMetadata
 from app.schemas import (
     AssetHistoryResponse,
     AssetResponse,
@@ -715,6 +715,150 @@ def get_live_stats():
         "total": len(summaries),
         "assets_by_location": dict(sorted(locations.items())),
         "assets_by_category": dict(sorted(categories.items())),
+    }
+
+
+# -----------------------------------------------------------------------------
+# Land & Buildings / Collections endpoints
+# -----------------------------------------------------------------------------
+
+
+@app.get("/land-buildings")
+def list_land_buildings(
+    search: Optional[str] = None,
+    item_type: Optional[str] = None,
+    country: Optional[str] = None,
+    unique_id: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """
+    List Land & Buildings / Collections with optional filtering.
+
+    Uses FTS5 for fast text search when search parameter is provided.
+    """
+    # Handle unique_id exact match
+    if unique_id:
+        item = db.query(LandBuilding).filter(LandBuilding.unique_id == unique_id).first()
+        if not item:
+            return {"items": [], "total": 0, "page": 1, "page_size": page_size, "pages": 0}
+        return {
+            "items": [_land_building_to_dict(item)],
+            "total": 1,
+            "page": 1,
+            "page_size": page_size,
+            "pages": 1,
+        }
+
+    if search:
+        # Use FTS5 for text search
+        search_term = search.replace('"', '""')
+        fts_query = f'"{search_term}"*'
+
+        fts_sql = text("""
+            SELECT unique_id, bm25(land_buildings_fts) as rank
+            FROM land_buildings_fts
+            WHERE land_buildings_fts MATCH :query
+            ORDER BY rank
+        """)
+        fts_results = db.execute(fts_sql, {"query": fts_query}).fetchall()
+        matching_ids = [r[0] for r in fts_results]
+
+        if not matching_ids:
+            return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
+
+        query = db.query(LandBuilding).filter(LandBuilding.unique_id.in_(matching_ids))
+
+        if item_type:
+            query = query.filter(LandBuilding.item_type == item_type)
+        if country:
+            query = query.filter(LandBuilding.country.ilike(f"%{country}%"))
+
+        total = query.count()
+        pages = (total + page_size - 1) // page_size
+
+        items = query.all()
+        id_to_rank = {r[0]: i for i, r in enumerate(fts_results)}
+        items.sort(key=lambda a: id_to_rank.get(a.unique_id, 999999))
+        items = items[(page - 1) * page_size : page * page_size]
+    else:
+        query = db.query(LandBuilding)
+
+        if item_type:
+            query = query.filter(LandBuilding.item_type == item_type)
+        if country:
+            query = query.filter(LandBuilding.country.ilike(f"%{country}%"))
+
+        total = query.count()
+        pages = (total + page_size - 1) // page_size
+
+        items = (
+            query.order_by(LandBuilding.name)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+    return {
+        "items": [_land_building_to_dict(item) for item in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": pages,
+    }
+
+
+def _land_building_to_dict(item: LandBuilding) -> dict:
+    """Convert LandBuilding to dict for API response"""
+    return {
+        "unique_id": item.unique_id,
+        "item_type": item.item_type,
+        "country": item.country,
+        "name": item.name,
+        "description": item.description,
+        "access_details": item.access_details,
+        "os_grid_ref": item.os_grid_ref,
+        "contact_name": item.contact_name,
+        "contact_address": item.contact_address,
+        "telephone": item.telephone,
+        "fax": item.fax,
+        "email": item.email,
+        "website": item.website,
+        "undertakings": item.undertakings,
+        "scraped_at": item.scraped_at.isoformat() if item.scraped_at else None,
+    }
+
+
+@app.get("/land-buildings/{unique_id}")
+def get_land_building(unique_id: str, db: Session = Depends(get_db)):
+    """Get a specific Land & Building or Collection item"""
+    item = db.query(LandBuilding).filter(LandBuilding.unique_id == unique_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return _land_building_to_dict(item)
+
+
+@app.get("/land-buildings-stats")
+def get_land_buildings_stats(db: Session = Depends(get_db)):
+    """Get stats for Land & Buildings / Collections"""
+    total = db.query(LandBuilding).count()
+    land_count = db.query(LandBuilding).filter(LandBuilding.item_type == "land_building").count()
+    collection_count = db.query(LandBuilding).filter(LandBuilding.item_type == "collection").count()
+    with_undertakings = db.query(LandBuilding).filter(LandBuilding.undertakings.isnot(None)).count()
+
+    country_counts = (
+        db.query(LandBuilding.country, func.count(LandBuilding.id))
+        .group_by(LandBuilding.country)
+        .all()
+    )
+
+    return {
+        "total": total,
+        "land_buildings": land_count,
+        "collections": collection_count,
+        "with_undertakings": with_undertakings,
+        "by_country": {country: count for country, count in country_counts},
     }
 
 

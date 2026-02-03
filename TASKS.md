@@ -6,7 +6,6 @@
 ### Task title
 Description of what needs to be done.
 -->
-- I think each item has "Undertaking" attached to them.  For example: http://www.visitukheritage.gov.uk/servlet/com.eds.ir.cto.servlet.CtoLandDetailServlet?ID=722 contains a link to: http://www.visitukheritage.gov.uk/servlet/com.eds.ir.cto.servlet.CtoLandPrinUnderServlet?ID=722  I would like to capture these undertakings too.  Please create a plan for doing this and discuss it with me.
 ## Future Ideas
 
 <!-- Ideas not ready to implement yet. Can be rough notes, questions, or half-formed thoughts. -->
@@ -44,3 +43,5 @@ Description of what needs to be done.
 - **2026-02-03**: Format empty strings on single line - Fixed "(empty string)" display to stay on one line instead of wrapping. Added `white-space: nowrap` and `align-items: baseline` to the details grid CSS.
 - **2026-02-03**: Consistent row heights in details grid - Fixed inconsistent row heights between empty and non-empty values. Added explicit `line-height: 20px` and `min-height: 20px` to ensure uniform row heights.
 - **2026-02-03**: Fix text selection collapsing expanded rows - Added check for `window.getSelection()` in click handler to prevent row collapse when user is selecting text to copy.
+- **2026-02-03**: Add HMRC link to browse page - Added "View on HMRC" link in details metadata section.
+- **2026-02-03**: Capture Land & Buildings and Collections with undertakings - Discovered HMRC has three separate databases (Works of Art, Land & Buildings, Collections). Scraped 553 items (364 L&B, 189 Collections) with undertakings (legal access obligations). Created `LandBuilding` model, scraper (`scripts/scrape_land_buildings.py`), API endpoints (`/land-buildings`, `/land-buildings-stats`), and updated browse UI with data source toggle.
