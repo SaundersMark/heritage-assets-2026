@@ -14,7 +14,8 @@ venv/
 *.db
 .env
 logs/
-data/
+data/*
+!data/collections.csv
 
 # Local tools
 .claude/
