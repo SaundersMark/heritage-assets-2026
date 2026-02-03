@@ -146,6 +146,9 @@ class LandBuilding(Base):
     # Undertakings - the legal text about public access obligations
     undertakings: Mapped[Optional[str]] = mapped_column(Text)
 
+    # Map - whether a sketch map image exists at /images/{unique_id}.jpg
+    has_map: Mapped[bool] = mapped_column(Integer, default=False)  # SQLite doesn't have bool
+
     # Audit
     scraped_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

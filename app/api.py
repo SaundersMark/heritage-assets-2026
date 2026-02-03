@@ -826,6 +826,7 @@ def _land_building_to_dict(item: LandBuilding) -> dict:
         "email": item.email,
         "website": item.website,
         "undertakings": item.undertakings,
+        "has_map": bool(item.has_map),
         "scraped_at": item.scraped_at.isoformat() if item.scraped_at else None,
     }
 
@@ -846,6 +847,7 @@ def get_land_buildings_stats(db: Session = Depends(get_db)):
     land_count = db.query(LandBuilding).filter(LandBuilding.item_type == "land_building").count()
     collection_count = db.query(LandBuilding).filter(LandBuilding.item_type == "collection").count()
     with_undertakings = db.query(LandBuilding).filter(LandBuilding.undertakings.isnot(None)).count()
+    with_maps = db.query(LandBuilding).filter(LandBuilding.has_map == True).count()
 
     country_counts = (
         db.query(LandBuilding.country, func.count(LandBuilding.id))
@@ -858,6 +860,7 @@ def get_land_buildings_stats(db: Session = Depends(get_db)):
         "land_buildings": land_count,
         "collections": collection_count,
         "with_undertakings": with_undertakings,
+        "with_maps": with_maps,
         "by_country": {country: count for country, count in country_counts},
     }
 

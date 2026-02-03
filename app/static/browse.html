@@ -538,7 +538,11 @@
             metaHtml += ` | <a href="${hmrcUrl}" target="_blank">View on HMRC</a>`;
             if (data.undertakings) {
                 const undertakingsUrl = `http://www.visitukheritage.gov.uk/servlet/com.eds.ir.cto.servlet.CtoLandPrinUnderServlet?ID=${uniqueId}`;
-                metaHtml += ` | <a href="${undertakingsUrl}" target="_blank">View Undertakings on HMRC</a>`;
+                metaHtml += ` | <a href="${undertakingsUrl}" target="_blank">Undertakings</a>`;
+            }
+            if (data.has_map) {
+                const mapUrl = `http://www.visitukheritage.gov.uk/images/${uniqueId}.jpg`;
+                metaHtml += ` | <a href="${mapUrl}" target="_blank">View Map</a>`;
             }
             metaHtml += '</div>';
 

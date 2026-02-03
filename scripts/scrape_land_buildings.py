@@ -106,8 +106,18 @@ def parse_undertakings_page(html: str) -> str:
     return ""
 
 
-def scrape_item(client: httpx.Client, item_id: str, delay: float) -> tuple[dict, str]:
-    """Scrape detail page and undertakings for one item."""
+def check_map_exists(client: httpx.Client, item_id: str) -> bool:
+    """Check if a map image exists for this item."""
+    map_url = f"{BASE_URL}/images/{item_id}.jpg"
+    try:
+        response = client.head(map_url, follow_redirects=True)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def scrape_item(client: httpx.Client, item_id: str, delay: float) -> tuple[dict, str, bool]:
+    """Scrape detail page, undertakings, and check for map for one item."""
     # Fetch detail page
     detail_url = f"{BASE_URL}/servlet/com.eds.ir.cto.servlet.CtoLandDetailServlet?ID={item_id}"
     response = client.get(detail_url, follow_redirects=True)
@@ -124,7 +134,10 @@ def scrape_item(client: httpx.Client, item_id: str, delay: float) -> tuple[dict,
 
     time.sleep(delay)
 
-    return data, undertakings
+    # Check if map exists (HEAD request, no delay needed - very fast)
+    has_map = check_map_exists(client, item_id)
+
+    return data, undertakings, has_map
 
 
 def main():
@@ -219,7 +232,7 @@ def main():
         for i, (item_id, is_collection) in enumerate(new_items):
             item_type = "collection" if is_collection else "land_building"
             try:
-                data, undertakings = scrape_item(client, item_id, args.delay)
+                data, undertakings, has_map = scrape_item(client, item_id, args.delay)
 
                 lb = LandBuilding(
                     unique_id=item_id,
@@ -236,6 +249,7 @@ def main():
                     email=data.get("email"),
                     website=data.get("website"),
                     undertakings=undertakings if undertakings else None,
+                    has_map=has_map,
                 )
                 session.add(lb)
                 scraped += 1
