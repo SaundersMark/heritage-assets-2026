@@ -61,6 +61,8 @@ def list_assets(
     location: Optional[str] = None,
     category: Optional[str] = None,
     search: Optional[str] = None,
+    unique_id: Optional[str] = None,
+    owner_id: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -70,7 +72,50 @@ def list_assets(
 
     Only returns current versions (valid_until IS NULL).
     Uses FTS5 for fast text search when search parameter is provided.
+    Supports exact match on unique_id or owner_id.
     """
+    # Handle unique_id exact match
+    if unique_id:
+        query = db.query(Asset).filter(
+            Asset.valid_until.is_(None),
+            Asset.unique_id == unique_id
+        )
+        items = query.all()
+        return PaginatedResponse(
+            items=[AssetResponse.model_validate(a) for a in items],
+            total=len(items),
+            page=1,
+            page_size=page_size,
+            pages=1 if items else 0,
+        )
+
+    # Handle owner_id filter
+    if owner_id:
+        query = db.query(Asset).filter(
+            Asset.valid_until.is_(None),
+            Asset.owner_id == owner_id
+        )
+        if location:
+            query = query.filter(Asset.location.ilike(f"%{location}%"))
+        if category:
+            query = query.filter(Asset.category.ilike(f"%{category}%"))
+
+        total = query.count()
+        pages = (total + page_size - 1) // page_size
+        items = (
+            query.order_by(Asset.unique_id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        return PaginatedResponse(
+            items=[AssetResponse.model_validate(a) for a in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        )
+
     if search:
         # Use FTS5 for text search - much faster than ILIKE
         # Escape special FTS5 characters and add prefix matching
@@ -367,6 +412,70 @@ def get_stats(db: Session = Depends(get_db)):
         assets_by_location={loc: count for loc, count in location_counts},
         assets_by_category={cat: count for cat, count in category_counts},
     )
+
+
+# -----------------------------------------------------------------------------
+# Collections lookup (owner_id -> collection name mapping)
+# -----------------------------------------------------------------------------
+
+_collections_cache: dict[str, str] | None = None
+
+
+def _load_collections() -> dict[str, str]:
+    """Load collection names from CSV file"""
+    import csv
+
+    collections_path = settings.data_dir / "collections.csv"
+    if not collections_path.exists():
+        logger.warning(f"Collections file not found: {collections_path}")
+        return {}
+
+    mapping = {}
+    with open(collections_path, "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            owner_id = row.get("owner_id", "").strip()
+            # Use accepted name if available, otherwise suggested
+            name = row.get("my_accepted_collection_name", "").strip()
+            if not name:
+                name = row.get("suggested_collection_name", "").strip()
+            # Skip "Unknown" - used to mark investigated but unidentified collections
+            if owner_id and name and name.lower() != "unknown":
+                mapping[owner_id] = name
+
+    logger.info(f"Loaded {len(mapping)} collection names from {collections_path}")
+    return mapping
+
+
+def _get_collections() -> dict[str, str]:
+    """Get collections, loading from CSV if not cached"""
+    global _collections_cache
+    if _collections_cache is None:
+        _collections_cache = _load_collections()
+    return _collections_cache
+
+
+@app.get("/collections/{owner_id}")
+def get_collection_name(owner_id: str):
+    """Get collection name for an owner_id"""
+    collections = _get_collections()
+    name = collections.get(owner_id)
+    return {"owner_id": owner_id, "collection_name": name}
+
+
+@app.get("/collections")
+def get_all_collections():
+    """Get all collection name mappings"""
+    collections = _get_collections()
+    return {"count": len(collections), "collections": collections}
+
+
+@app.post("/collections/reload")
+def reload_collections():
+    """Reload collection names from CSV file"""
+    global _collections_cache
+    _collections_cache = _load_collections()
+    return {"success": True, "count": len(_collections_cache)}
 
 
 # -----------------------------------------------------------------------------

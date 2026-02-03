@@ -101,6 +101,16 @@
         }
         .asset-row.expanded .asset-details { display: block; }
 
+        .collection-banner {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            font-size: 14px;
+            color: #856404;
+        }
+        .collection-banner strong { color: #664d03; }
         .details-meta {
             background: #e8f4e8;
             border: 1px solid #c3e6c3;
@@ -231,6 +241,11 @@
         </div>
 
         <div class="search-box">
+            <select id="searchType" style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px;">
+                <option value="description">Description</option>
+                <option value="unique_id">Unique ID</option>
+                <option value="owner_id">Owner ID</option>
+            </select>
             <input type="text" id="search" placeholder="Search by description..." autofocus>
             <button id="searchBtn">Search</button>
         </div>
@@ -255,10 +270,22 @@
 
         const searchInput = document.getElementById('search');
         const searchBtn = document.getElementById('searchBtn');
+        const searchType = document.getElementById('searchType');
         const resultsDiv = document.getElementById('results');
         const statsDiv = document.getElementById('stats');
         const paginationDiv = document.getElementById('pagination');
         const sourceInfoSpan = document.getElementById('sourceInfo');
+
+        const placeholders = {
+            description: 'Search by description...',
+            unique_id: 'Enter unique ID (e.g., 115177)',
+            owner_id: 'Enter owner ID (e.g., 248234.9)'
+        };
+
+        searchType.addEventListener('change', () => {
+            searchInput.placeholder = placeholders[searchType.value];
+            searchInput.focus();
+        });
 
         searchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') { currentPage = 1; loadAssets(); }
@@ -280,7 +307,14 @@
             }
 
             const params = new URLSearchParams();
-            params.set('search', search);
+            const type = searchType.value;
+            if (type === 'unique_id') {
+                params.set('unique_id', search);
+            } else if (type === 'owner_id') {
+                params.set('owner_id', search);
+            } else {
+                params.set('search', search);
+            }
             params.set('page', currentPage);
             params.set('page_size', 50);
 
@@ -336,13 +370,28 @@
             detailsDiv.innerHTML = '<div class="loading-details">Loading details...</div>';
 
             try {
-                // Fetch asset details and history summary in parallel
+                // Fetch asset details, history summary, and collection name in parallel
                 const [assetRes, historyRes] = await Promise.all([
                     fetch(`/assets/${uniqueId}`),
                     fetch(`/assets/${uniqueId}/history-summary`)
                 ]);
                 if (!assetRes.ok) throw new Error('Failed to fetch');
                 let details = await assetRes.json();
+
+                // Fetch collection name if we have an owner_id
+                if (details.owner_id) {
+                    try {
+                        const collRes = await fetch(`/collections/${encodeURIComponent(details.owner_id)}`);
+                        if (collRes.ok) {
+                            const collData = await collRes.json();
+                            if (collData.collection_name) {
+                                details._collection_name = collData.collection_name;
+                            }
+                        }
+                    } catch (e) {
+                        // Ignore collection lookup errors
+                    }
+                }
 
                 // Add history fields if available
                 if (historyRes.ok) {
@@ -395,6 +444,12 @@
         }
 
         function renderFullDetails(data, uniqueId) {
+            // Collection name banner (if available)
+            let collectionHtml = '';
+            if (data._collection_name) {
+                collectionHtml = `<div class="collection-banner"><strong>Collection:</strong> ${escapeHtml(data._collection_name)}</div>`;
+            }
+
             // Metadata section
             let metaHtml = `<div class="details-meta">`;
             metaHtml += `<strong>Valid From:</strong> ${data.valid_from || 'unknown'}`;
@@ -425,7 +480,7 @@
                 </div>
             `;
 
-            return metaHtml + gridHtml + historyHtml;
+            return collectionHtml + metaHtml + gridHtml + historyHtml;
         }
 
         function attachHistoryHandlers(container, uniqueId) {
