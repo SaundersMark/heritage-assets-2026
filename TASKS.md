@@ -6,7 +6,7 @@
 ### Task title
 Description of what needs to be done.
 -->
-- Create a repo (including 2026 in the name) on github
+- I think each item has "Undertaking" attached to them.  For example: http://www.visitukheritage.gov.uk/servlet/com.eds.ir.cto.servlet.CtoLandDetailServlet?ID=722 contains a link to: http://www.visitukheritage.gov.uk/servlet/com.eds.ir.cto.servlet.CtoLandPrinUnderServlet?ID=722  I would like to capture these undertakings too.  Please create a plan for doing this and discuss it with me.
 ## Future Ideas
 
 <!-- Ideas not ready to implement yet. Can be rough notes, questions, or half-formed thoughts. -->
