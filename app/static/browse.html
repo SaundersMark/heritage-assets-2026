@@ -46,7 +46,7 @@
         .source-info { font-size: 12px; color: #666; margin-left: auto; }
         .search-box { display: flex; gap: 10px; }
         #search {
-            flex: 1;
+            width: 100%;
             padding: 12px 16px;
             font-size: 16px;
             border: 2px solid #ddd;
@@ -66,6 +66,32 @@
         #searchBtn:hover { background: #0052a3; }
         #searchBtn:disabled { background: #ccc; cursor: not-allowed; }
         .hint { font-size: 12px; color: #888; margin-top: 8px; }
+        .search-wrapper { position: relative; flex: 1; }
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 2px solid #0066cc;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 100;
+            display: none;
+        }
+        .autocomplete-dropdown.visible { display: block; }
+        .autocomplete-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        .autocomplete-item:last-child { border-bottom: none; }
+        .autocomplete-item:hover, .autocomplete-item.selected { background: #f0f7ff; }
+        .autocomplete-item .item-name { color: #333; }
+        .autocomplete-item .item-meta { font-size: 12px; color: #666; margin-top: 2px; }
+        .autocomplete-item .match { background: #ffeb3b; padding: 0 2px; }
         .stats { color: #666; margin-bottom: 10px; font-size: 14px; }
         .results {
             background: white;
@@ -254,10 +280,13 @@
                 <option value="unique_id">Unique ID</option>
                 <option value="owner_id">Owner ID</option>
             </select>
-            <input type="text" id="search" placeholder="Search by description..." autofocus>
+            <div class="search-wrapper">
+                <input type="text" id="search" placeholder="Search by description..." autofocus autocomplete="off">
+                <div class="autocomplete-dropdown" id="autocomplete"></div>
+            </div>
             <button id="searchBtn">Search</button>
         </div>
-        <div class="hint">Press Enter or click Search. Results show summary; click a row to fetch full details.</div>
+        <div class="hint" id="searchHint">Press Enter or click Search. Results show summary; click a row to fetch full details.</div>
     </div>
 
     <div class="stats" id="stats"></div>
@@ -283,6 +312,8 @@
         const statsDiv = document.getElementById('stats');
         const paginationDiv = document.getElementById('pagination');
         const sourceInfoSpan = document.getElementById('sourceInfo');
+        const autocompleteDiv = document.getElementById('autocomplete');
+        const searchHint = document.getElementById('searchHint');
 
         function getDataSource() {
             return document.querySelector('input[name="dataSource"]:checked').value;
@@ -308,21 +339,171 @@
                 if (isLandBuildings) {
                     ownerOption.style.display = 'none';
                     if (searchType.value === 'owner_id') searchType.value = 'description';
+                    searchHint.textContent = 'Start typing to see suggestions. Press Enter or click Search.';
                 } else {
                     ownerOption.style.display = '';
+                    searchHint.textContent = 'Press Enter or click Search. Results show summary; click a row to fetch full details.';
                 }
                 // Clear results when switching
                 currentPage = 1;
                 detailsCache = {};
+                hideAutocomplete();
                 updateSourceInfo();
                 if (searchInput.value.trim()) loadAssets();
             });
         });
 
         searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') { currentPage = 1; loadAssets(); }
+            if (e.key === 'Enter') {
+                hideAutocomplete();
+                currentPage = 1;
+                loadAssets();
+            }
         });
-        searchBtn.addEventListener('click', () => { currentPage = 1; loadAssets(); });
+        searchBtn.addEventListener('click', () => { hideAutocomplete(); currentPage = 1; loadAssets(); });
+
+        // Autocomplete for Land & Buildings
+        let landBuildingsCache = null;
+        let selectedAutocompleteIndex = -1;
+
+        async function loadLandBuildingsCache() {
+            if (landBuildingsCache) return landBuildingsCache;
+            try {
+                const response = await fetch('/land-buildings?page_size=1000');
+                const data = await response.json();
+                landBuildingsCache = data.items;
+                return landBuildingsCache;
+            } catch (e) {
+                console.error('Failed to load land buildings cache:', e);
+                return [];
+            }
+        }
+
+        function showAutocomplete(items, query) {
+            if (items.length === 0) {
+                hideAutocomplete();
+                return;
+            }
+            const queryLower = query.toLowerCase();
+            autocompleteDiv.innerHTML = items.slice(0, 15).map((item, idx) => {
+                const name = item.name || '';
+                const highlightedName = highlightMatch(name, queryLower);
+                return `
+                    <div class="autocomplete-item${idx === selectedAutocompleteIndex ? ' selected' : ''}" data-index="${idx}" data-id="${item.unique_id}">
+                        <div class="item-name">${highlightedName}</div>
+                        <div class="item-meta">${escapeHtml(item.country)} · ${item.item_type === 'collection' ? 'Collection' : 'Land/Building'}</div>
+                    </div>
+                `;
+            }).join('');
+            autocompleteDiv.classList.add('visible');
+
+            // Add click handlers
+            autocompleteDiv.querySelectorAll('.autocomplete-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    const id = el.dataset.id;
+                    const item = items.find(i => i.unique_id === id);
+                    if (item) {
+                        searchInput.value = item.name;
+                        hideAutocomplete();
+                        currentPage = 1;
+                        loadAssets();
+                    }
+                });
+            });
+        }
+
+        function hideAutocomplete() {
+            autocompleteDiv.classList.remove('visible');
+            autocompleteDiv.innerHTML = '';
+            selectedAutocompleteIndex = -1;
+        }
+
+        function highlightMatch(text, query) {
+            const escaped = escapeHtml(text);
+            const idx = text.toLowerCase().indexOf(query);
+            if (idx === -1) return escaped;
+            const before = escapeHtml(text.substring(0, idx));
+            const match = escapeHtml(text.substring(idx, idx + query.length));
+            const after = escapeHtml(text.substring(idx + query.length));
+            return `${before}<span class="match">${match}</span>${after}`;
+        }
+
+        let autocompleteTimeout = null;
+        searchInput.addEventListener('input', async (e) => {
+            const isLandBuildings = getDataSource() === 'land_buildings';
+            const searchTypeVal = searchType.value;
+
+            if (!isLandBuildings || searchTypeVal !== 'description') {
+                hideAutocomplete();
+                return;
+            }
+
+            const query = searchInput.value.trim();
+            if (query.length < 1) {
+                hideAutocomplete();
+                return;
+            }
+
+            // Debounce
+            clearTimeout(autocompleteTimeout);
+            autocompleteTimeout = setTimeout(async () => {
+                const items = await loadLandBuildingsCache();
+                const queryLower = query.toLowerCase();
+                const matches = items.filter(item =>
+                    (item.name && item.name.toLowerCase().includes(queryLower)) ||
+                    (item.description && item.description.toLowerCase().includes(queryLower))
+                );
+                // Sort: prefer name matches over description matches
+                matches.sort((a, b) => {
+                    const aNameMatch = a.name && a.name.toLowerCase().includes(queryLower);
+                    const bNameMatch = b.name && b.name.toLowerCase().includes(queryLower);
+                    if (aNameMatch && !bNameMatch) return -1;
+                    if (!aNameMatch && bNameMatch) return 1;
+                    return (a.name || '').localeCompare(b.name || '');
+                });
+                selectedAutocompleteIndex = -1;
+                showAutocomplete(matches, query);
+            }, 100);
+        });
+
+        // Keyboard navigation for autocomplete
+        searchInput.addEventListener('keydown', (e) => {
+            if (!autocompleteDiv.classList.contains('visible')) return;
+
+            const items = autocompleteDiv.querySelectorAll('.autocomplete-item');
+            if (items.length === 0) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedAutocompleteIndex = Math.min(selectedAutocompleteIndex + 1, items.length - 1);
+                updateAutocompleteSelection(items);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedAutocompleteIndex = Math.max(selectedAutocompleteIndex - 1, 0);
+                updateAutocompleteSelection(items);
+            } else if (e.key === 'Escape') {
+                hideAutocomplete();
+            } else if (e.key === 'Enter' && selectedAutocompleteIndex >= 0) {
+                e.preventDefault();
+                items[selectedAutocompleteIndex].click();
+            }
+        });
+
+        function updateAutocompleteSelection(items) {
+            items.forEach((item, idx) => {
+                item.classList.toggle('selected', idx === selectedAutocompleteIndex);
+            });
+            if (selectedAutocompleteIndex >= 0) {
+                items[selectedAutocompleteIndex].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        // Hide autocomplete when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-wrapper')) {
+                hideAutocomplete();
+            }
+        });
 
         async function loadAssets() {
             const search = searchInput.value.trim();
