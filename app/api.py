@@ -439,8 +439,8 @@ def _load_collections() -> dict[str, str]:
             name = row.get("my_accepted_collection_name", "").strip()
             if not name:
                 name = row.get("suggested_collection_name", "").strip()
-            # Skip "Unknown" - used to mark investigated but unidentified collections
-            if owner_id and name and name.lower() != "unknown":
+            # Skip placeholder names that aren't real collection names
+            if owner_id and name and name.lower() not in ("unknown", "not applicable"):
                 mapping[owner_id] = name
 
     logger.info(f"Loaded {len(mapping)} collection names from {collections_path}")
